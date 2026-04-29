@@ -89,6 +89,7 @@ interface BubbleProps {
   isHover: boolean
   isActive: boolean
   isDimmed: boolean
+  forceLabelBelow: boolean
   onHover: () => void
   onLeave: () => void
   onClick: () => void
@@ -96,7 +97,7 @@ interface BubbleProps {
 
 function Bubble({
   task, x, y, cx, cy, size, seed, time, motionEnabled,
-  isHover, isActive, isDimmed, onHover, onLeave, onClick,
+  isHover, isActive, isDimmed, forceLabelBelow, onHover, onLeave, onClick,
 }: BubbleProps) {
   const pillar = PILLARS[task.pillar]
 
@@ -113,17 +114,28 @@ function Bubble({
   const dxR = x - cx, dyR = y - cy
   const dist = Math.sqrt(dxR * dxR + dyR * dyR) || 1
   const ux = dxR / dist, uy = dyR / dist
-  const labelOffset = size / 2 + 14
-  const labelX = ux * labelOffset
-  const labelY = uy * labelOffset
-  const verticalDominant = Math.abs(uy) > Math.abs(ux)
-  let labelTransform: string, labelAlign: 'flex-start' | 'flex-end' | 'center'
-  if (verticalDominant) {
-    labelTransform = uy < 0 ? 'translate(-50%, -100%)' : 'translate(-50%, 0)'
+  const labelOffset = size / 2 + 10
+  let labelX: number, labelY: number, labelTransform: string
+  let labelAlign: 'flex-start' | 'flex-end' | 'center'
+
+  if (forceLabelBelow) {
+    // Phone mode: label always sits directly below the bubble. Avoids
+    // horizontal clipping on side-of-orbit bubbles on small viewports.
+    labelX = 0
+    labelY = labelOffset
+    labelTransform = 'translate(-50%, 0)'
     labelAlign = 'center'
   } else {
-    labelTransform = ux > 0 ? 'translate(0, -50%)' : 'translate(-100%, -50%)'
-    labelAlign = ux > 0 ? 'flex-start' : 'flex-end'
+    labelX = ux * labelOffset
+    labelY = uy * labelOffset
+    const verticalDominant = Math.abs(uy) > Math.abs(ux)
+    if (verticalDominant) {
+      labelTransform = uy < 0 ? 'translate(-50%, -100%)' : 'translate(-50%, 0)'
+      labelAlign = 'center'
+    } else {
+      labelTransform = ux > 0 ? 'translate(0, -50%)' : 'translate(-100%, -50%)'
+      labelAlign = ux > 0 ? 'flex-start' : 'flex-end'
+    }
   }
 
   return (
@@ -198,18 +210,20 @@ function Bubble({
         pointerEvents: 'none',
         whiteSpace: 'nowrap',
       }}>
-        <div className="ob-mono" style={{
-          fontSize: 8.5,
-          letterSpacing: '0.14em',
-          textTransform: 'uppercase',
-          color: pillar.color,
-          opacity: 0.75,
-          lineHeight: 1,
-        }}>
-          {pillar.name}
-        </div>
+        {!forceLabelBelow && (
+          <div className="ob-mono" style={{
+            fontSize: 8.5,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: pillar.color,
+            opacity: 0.75,
+            lineHeight: 1,
+          }}>
+            {pillar.name}
+          </div>
+        )}
         <div style={{
-          fontSize: 12.5,
+          fontSize: forceLabelBelow ? 11 : 12.5,
           fontWeight: 600,
           color: 'var(--ob-ink)',
           letterSpacing: '-0.005em',
@@ -245,9 +259,13 @@ interface CenterLogoProps {
   onClick: () => void
   dimmed: boolean
   size?: number
+  showCaption?: boolean
 }
 
-function CenterLogo({ pulse, cx, cy, isActive, onClick, dimmed, size = 132 }: CenterLogoProps) {
+function CenterLogo({
+  pulse, cx, cy, isActive, onClick, dimmed,
+  size = 132, showCaption = true,
+}: CenterLogoProps) {
   const SIZE = size
   return (
     <div style={{
@@ -315,21 +333,23 @@ function CenterLogo({ pulse, cx, cy, isActive, onClick, dimmed, size = 132 }: Ce
           <path d="M64 52 L70 58" stroke="#b88a3a" strokeWidth="3.4" strokeLinecap="round"/>
         </svg>
       </button>
-      <div style={{
-        position: 'absolute',
-        top: SIZE + 14,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        textAlign: 'center',
-        whiteSpace: 'nowrap',
-        opacity: isActive ? 0 : 1,
-        transition: 'opacity 200ms',
-      }}>
-        <div className="ob-serif" style={{ fontSize: 18, lineHeight: 1, color: 'var(--ob-ink)' }}>OneBrain</div>
-        <div className="ob-mono" style={{ fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ob-ink-2)', marginTop: 4 }}>
-          Tap to ask
+      {showCaption && (
+        <div style={{
+          position: 'absolute',
+          top: SIZE + 14,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          textAlign: 'center',
+          whiteSpace: 'nowrap',
+          opacity: isActive ? 0 : 1,
+          transition: 'opacity 200ms',
+        }}>
+          <div className="ob-serif" style={{ fontSize: 18, lineHeight: 1, color: 'var(--ob-ink)' }}>OneBrain</div>
+          <div className="ob-mono" style={{ fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ob-ink-2)', marginTop: 4 }}>
+            Tap to ask
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -624,14 +644,10 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
   const isTablet = w >= 560 && w < 1024
   const isMobile = isPhone || isTablet
 
-  const tweaks: OrbitTweaks = {
-    ...baseTweaks,
-    bubbleSize: isPhone ? 56 : isTablet ? 78 : baseTweaks.bubbleSize,
-    radius: isPhone ? 0.34 : isTablet ? 0.32 : baseTweaks.radius,
-  }
+  const bubbleSize = isPhone ? 50 : isTablet ? 78 : baseTweaks.bubbleSize
 
   useEffect(() => {
-    if (!tweaks.drift && !tweaks.bubbleMotion) return
+    if (!baseTweaks.drift && !baseTweaks.bubbleMotion) return
     let raf = 0
     let last = performance.now()
     let t = 0
@@ -640,30 +656,42 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
       last = now
       t += dt
       setTime(t)
-      if (tweaks.drift) {
-        setRotation(r => r + dt * tweaks.driftSpeed * 0.05)
+      if (baseTweaks.drift) {
+        setRotation(r => r + dt * baseTweaks.driftSpeed * 0.05)
       }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [tweaks.drift, tweaks.driftSpeed, tweaks.bubbleMotion])
+  }, [baseTweaks.drift, baseTweaks.driftSpeed, baseTweaks.bubbleMotion])
 
   const seeds = useBubbleSeeds(TASKS.length)
 
-  const HEADER_H = isPhone ? 86 : isTablet ? 104 : 132
-  const FOOTER_H = isPhone ? 40 : 56
-  const PILLAR_STRIP_H = isPhone ? 44 : isTablet ? 48 : 0
-  const centerLogoSize = isPhone ? 84 : isTablet ? 104 : 132
+  // Compact phone chrome: slim header, no pillar strip, slim footer.
+  const HEADER_H = isPhone ? 56 : isTablet ? 96 : 132
+  const FOOTER_H = isPhone ? 32 : 56
+  const PILLAR_STRIP_H = isTablet ? 48 : 0
+  const centerLogoSize = isPhone ? 72 : isTablet ? 100 : 132
   const topInset = HEADER_H + PILLAR_STRIP_H
   const cx = w / 2
   const cy = topInset + (h - topInset - FOOTER_H) / 2
   const stageW = w
-  const stageH = Math.max(280, h - topInset - FOOTER_H)
+  const stageH = Math.max(220, h - topInset - FOOTER_H)
+
+  // Adaptive radius — clamp so the bubbles + labels fit in the available rect.
+  // labelRoom: space reserved for the label below/around the bubble.
+  const labelRoom = isPhone ? 36 : isTablet ? 30 : 0
+  const halfV = stageH / 2 - bubbleSize / 2 - labelRoom - 8
+  const halfH = w / 2 - bubbleSize / 2 - (isPhone ? 8 : 60)
+  const denom = Math.max(1, Math.min(stageW, stageH))
+  const adaptiveRadius = isMobile
+    ? Math.min(baseTweaks.radius, halfV / denom, halfH / denom)
+    : baseTweaks.radius
+  const radius = Math.max(0.16, adaptiveRadius)
 
   const positions = useMemo(
-    () => getBubblePositions(TASKS.length, stageW, stageH, cx, cy, tweaks.radius, rotation),
-    [stageW, stageH, cx, cy, tweaks.radius, rotation]
+    () => getBubblePositions(TASKS.length, stageW, stageH, cx, cy, radius, rotation),
+    [stageW, stageH, cx, cy, radius, rotation]
   )
 
   const headerStyle: CSSProperties = {
@@ -696,42 +724,62 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div style={headerStyle}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: isPhone ? 2 : 4, minWidth: 0 }}>
-          <div className="ob-mono" style={{
-            fontSize: isPhone ? 9 : 10,
-            letterSpacing: '0.18em',
-            textTransform: 'uppercase',
-            color: 'var(--ob-ink-2)',
-          }}>
-            10 agents · 3 pillars
-          </div>
-          <div className="ob-serif" style={{
-            fontSize: isPhone ? 22 : isTablet ? 26 : 32,
-            lineHeight: 1.05,
-            letterSpacing: '-0.015em',
-          }}>
-            OneBrain at a glance
-          </div>
-          {!isPhone && (
-            <div style={{
-              fontSize: isTablet ? 12 : 13,
-              color: 'var(--ob-ink-2)',
-              lineHeight: 1.4,
+        {isPhone ? (
+          <>
+            <div className="ob-serif" style={{
+              fontSize: 20,
+              lineHeight: 1,
+              letterSpacing: '-0.015em',
             }}>
-              WealthQuest's corporate operating system — tap any agent to open it.
+              OneBrain
             </div>
-          )}
-        </div>
-        {!isMobile && <PillarLegend active={pillarFilter} onPick={setPillarFilter} compact={false}/>}
+            <div className="ob-mono" style={{
+              fontSize: 9,
+              letterSpacing: '0.18em',
+              textTransform: 'uppercase',
+              color: 'var(--ob-ink-2)',
+            }}>
+              10 agents
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+              <div className="ob-mono" style={{
+                fontSize: 10,
+                letterSpacing: '0.18em',
+                textTransform: 'uppercase',
+                color: 'var(--ob-ink-2)',
+              }}>
+                10 active agents · 3 pillars
+              </div>
+              <div className="ob-serif" style={{
+                fontSize: isTablet ? 26 : 32,
+                lineHeight: 1.05,
+                letterSpacing: '-0.015em',
+              }}>
+                OneBrain at a glance
+              </div>
+              <div style={{
+                fontSize: isTablet ? 12 : 13,
+                color: 'var(--ob-ink-2)',
+                lineHeight: 1.4,
+              }}>
+                WealthQuest's corporate operating system — tap any agent to open it.
+              </div>
+            </div>
+            {!isTablet && <PillarLegend active={pillarFilter} onPick={setPillarFilter} compact={false}/>}
+          </>
+        )}
       </div>
 
-      {isMobile && (
+      {isTablet && (
         <div style={{
           position: 'absolute',
           top: HEADER_H,
           left: 0,
           right: 0,
-          padding: isPhone ? '8px 12px' : '10px 16px',
+          padding: '10px 16px',
           background: 'rgba(244,241,234,0.85)',
           borderBottom: '1px solid var(--ob-rule)',
           backdropFilter: 'blur(6px)',
@@ -766,14 +814,15 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
       </div>
 
       <div ref={stageRef} style={{ position: 'absolute', inset: 0 }}>
-        <OrbitRing w={w} h={h} cx={cx} cy={cy} radiusScale={tweaks.radius}/>
+        <OrbitRing w={w} h={h} cx={cx} cy={cy} radiusScale={radius}/>
         <CenterLogo
-          pulse={tweaks.pulse}
+          pulse={baseTweaks.pulse}
           cx={cx} cy={cy}
           isActive={chatOpen}
           dimmed={false}
           onClick={() => setChatOpen(o => !o)}
           size={centerLogoSize}
+          showCaption={!isPhone}
         />
         {TASKS.map((t, i) => {
           const p = positions[i]
@@ -785,13 +834,14 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
               task={t}
               x={p.x} y={p.y}
               cx={cx} cy={cy}
-              size={tweaks.bubbleSize}
+              size={bubbleSize}
               seed={seeds[i]}
               time={time + (seeds[i]?.driftLag || 0)}
-              motionEnabled={tweaks.bubbleMotion}
+              motionEnabled={baseTweaks.bubbleMotion}
               isHover={hoverId === t.id}
               isActive={false}
               isDimmed={Boolean(dimmedByFilter || dimmedByFocus)}
+              forceLabelBelow={isPhone}
               onHover={() => setHoverId(t.id)}
               onLeave={() => setHoverId(null)}
               onClick={() => onOpenTask(t)}
