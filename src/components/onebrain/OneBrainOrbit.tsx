@@ -644,7 +644,7 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
   const isTablet = w >= 560 && w < 1024
   const isMobile = isPhone || isTablet
 
-  const bubbleSize = isPhone ? 50 : isTablet ? 78 : baseTweaks.bubbleSize
+  const bubbleSize = isPhone ? 64 : isTablet ? 78 : baseTweaks.bubbleSize
 
   useEffect(() => {
     if (!baseTweaks.drift && !baseTweaks.bubbleMotion) return
