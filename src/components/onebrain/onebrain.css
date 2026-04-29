@@ -1,0 +1,242 @@
+/* OneBrain Hub — earthy theme, scoped to the .ob-root container.
+   Uses Geist + Instrument Serif + IBM Plex Mono loaded in index.html. */
+
+@keyframes wq-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+@keyframes wq-ring {
+  0% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+@keyframes wq-wave {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+@keyframes wq-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes wq-chat-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes wq-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@keyframes wq-dash-in {
+  from { opacity: 0; transform: scale(0.985); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.ob-root {
+  --ob-bg: #f4f1ea;
+  --ob-bg-2: #ebe6db;
+  --ob-ink: #15171a;
+  --ob-ink-2: #4a4d52;
+  --ob-rule: #d8d3c5;
+  --ob-card: #ffffff;
+  --ob-sees: #2f4a6b;
+  --ob-sees-soft: #dbe4ee;
+  --ob-predicts: #b8643a;
+  --ob-predicts-soft: #f1ddcd;
+  --ob-supports: #4a6b3f;
+  --ob-supports-soft: #dde6d3;
+  --ob-gold: #b88a3a;
+
+  position: fixed;
+  top: 0;
+  left: var(--sidebar-w, 64px);
+  right: 0;
+  bottom: 0;
+  background: var(--ob-bg);
+  color: var(--ob-ink);
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.ob-root * { box-sizing: border-box; }
+
+.ob-root .ob-serif {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.ob-root .ob-mono {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.ob-root button { font-family: inherit; }
+
+/* ── Dashboard layout ── */
+.ob-root .ob-dash-topbar {
+  padding: 16px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--ob-rule);
+  background: var(--ob-card);
+}
+.ob-root .ob-dash-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  flex: 1;
+}
+.ob-root .ob-dash-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--ob-rule);
+  background: var(--ob-bg-2);
+  color: var(--ob-ink);
+  font-size: 12.5px;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+.ob-root .ob-dash-divider { height: 24px; width: 1px; background: var(--ob-rule); }
+.ob-root .ob-dash-pillar-tag {
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ob-root .ob-dash-title { font-size: 22px; line-height: 1.1; margin-top: 2px; }
+.ob-root .ob-dash-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.ob-root .ob-dash-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(74, 107, 63, 0.12);
+  color: #4a6b3f;
+  font-size: 11px;
+  font-weight: 500;
+}
+.ob-root .ob-dash-updated {
+  font-size: 10.5px;
+  color: var(--ob-ink-2);
+  letter-spacing: 0.08em;
+}
+
+.ob-root .ob-dash-body {
+  flex: 1;
+  padding: 28px;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-rows: min-content;
+  gap: 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ob-root .ob-kpi {
+  grid-column: span 3;
+  background: var(--ob-card);
+  border: 1px solid var(--ob-rule);
+  border-radius: 14px;
+  padding: 18px;
+}
+.ob-root .ob-kpi-value {
+  font-size: 36px;
+  line-height: 1.05;
+  margin-top: 6px;
+  letter-spacing: -0.02em;
+}
+.ob-root .ob-dash-chart {
+  grid-column: 1 / span 8;
+  background: var(--ob-card);
+  border: 1px solid var(--ob-rule);
+  border-radius: 14px;
+  padding: 20px;
+  min-height: 280px;
+}
+.ob-root .ob-dash-side {
+  grid-column: 9 / span 4;
+  background: var(--ob-card);
+  border: 1px solid var(--ob-rule);
+  border-radius: 14px;
+  padding: 20px;
+  min-height: 280px;
+}
+.ob-root .ob-dash-activity {
+  grid-column: 1 / span 12;
+  background: var(--ob-card);
+  border: 1px solid var(--ob-rule);
+  border-radius: 14px;
+  padding: 20px;
+}
+.ob-root .ob-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 120px 80px;
+  gap: 16px;
+  padding: 12px 0;
+  align-items: center;
+}
+.ob-root .ob-row-time { font-size: 11px; color: var(--ob-ink-2); }
+.ob-root .ob-row-text { font-size: 13px; }
+.ob-root .ob-row-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  justify-self: start;
+}
+.ob-root .ob-row-score { font-size: 12px; color: var(--ob-ink-2); text-align: right; }
+
+/* ── Mobile (≤1024px): clear the wealth-quest mobile bottom nav ── */
+@media (max-width: 1024px) {
+  .ob-root {
+    left: 0;
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+  .ob-root .ob-dash-topbar { padding: 12px 16px; gap: 10px; }
+  .ob-root .ob-dash-topbar-left { gap: 10px; }
+  .ob-root .ob-dash-back { padding: 6px 10px; font-size: 12px; }
+  .ob-root .ob-dash-back-label { display: none; }
+  .ob-root .ob-dash-divider { display: none; }
+  .ob-root .ob-dash-title { font-size: 18px; }
+  .ob-root .ob-dash-updated { display: none; }
+  .ob-root .ob-dash-body {
+    padding: 16px;
+    gap: 12px;
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .ob-root .ob-kpi { grid-column: span 1; padding: 14px; }
+  .ob-root .ob-kpi-value { font-size: 26px; }
+  .ob-root .ob-dash-chart,
+  .ob-root .ob-dash-side,
+  .ob-root .ob-dash-activity { grid-column: 1 / -1; padding: 16px; min-height: auto; }
+  .ob-root .ob-row {
+    grid-template-columns: 60px 1fr auto;
+    gap: 10px;
+    padding: 10px 0;
+  }
+  .ob-root .ob-row-time { font-size: 10.5px; }
+  .ob-root .ob-row-text { font-size: 12.5px; grid-column: 2 / 3; grid-row: 1; }
+  .ob-root .ob-row-tag { grid-column: 2 / 3; grid-row: 2; font-size: 10px; padding: 2px 7px; }
+  .ob-root .ob-row-score { grid-column: 3 / 4; grid-row: 1 / span 2; align-self: center; }
+}
+
+@media (max-width: 480px) {
+  .ob-root .ob-dash-body { grid-template-columns: 1fr; }
+  .ob-root .ob-kpi-value { font-size: 24px; }
+  .ob-root .ob-dash-pillar-tag { display: none; }
+}
