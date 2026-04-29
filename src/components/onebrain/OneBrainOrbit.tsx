@@ -101,6 +101,61 @@ function Bubble({
 }: BubbleProps) {
   const pillar = PILLARS[task.pillar]
 
+  // Drag state: pointer can grab and toss the bubble; on release it springs
+  // back to its base orbit position with a tiny overshoot.
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [releasing, setReleasing] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartRef = useRef<{ px: number; py: number; sx: number; sy: number; moved: boolean } | null>(null)
+  const releaseTimerRef = useRef<number | null>(null)
+
+  useEffect(() => () => {
+    if (releaseTimerRef.current !== null) clearTimeout(releaseTimerRef.current)
+  }, [])
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    if (releaseTimerRef.current !== null) {
+      clearTimeout(releaseTimerRef.current)
+      releaseTimerRef.current = null
+    }
+    setReleasing(false)
+    dragStartRef.current = {
+      px: e.clientX, py: e.clientY,
+      sx: dragOffset.x, sy: dragOffset.y,
+      moved: false,
+    }
+  }
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const s = dragStartRef.current
+    if (!s) return
+    const nx = e.clientX - s.px + s.sx
+    const ny = e.clientY - s.py + s.sy
+    if (!s.moved && Math.hypot(e.clientX - s.px, e.clientY - s.py) > 4) {
+      s.moved = true
+      setIsDragging(true)
+    }
+    if (s.moved) setDragOffset({ x: nx, y: ny })
+  }
+  const handlePointerUp = () => {
+    const s = dragStartRef.current
+    if (!s) return
+    const wasDrag = s.moved
+    dragStartRef.current = null
+    setIsDragging(false)
+    if (wasDrag) {
+      setReleasing(true)
+      setDragOffset({ x: 0, y: 0 })
+      releaseTimerRef.current = window.setTimeout(() => {
+        setReleasing(false)
+        releaseTimerRef.current = null
+      }, 460)
+    } else {
+      onClick()
+    }
+  }
+
   let dx = 0, dy = 0, wobbleScale = 1
   if (motionEnabled && seed) {
     dx = Math.cos(time * seed.swayFreq * Math.PI * 2 + seed.swayPhase) * seed.swayAmp
@@ -108,7 +163,7 @@ function Bubble({
     wobbleScale = 1 + Math.sin(time * seed.scaleFreq * Math.PI * 2 + seed.scalePhase) * seed.scaleAmp
   }
 
-  const interactScale = isActive ? 1.08 : isHover ? 1.05 : 1
+  const interactScale = isActive ? 1.08 : isDragging ? 1.1 : isHover ? 1.05 : 1
   const finalScale = interactScale * wobbleScale
 
   const dxR = x - cx, dyR = y - cy
@@ -142,17 +197,24 @@ function Bubble({
     <div
       onMouseEnter={onHover}
       onMouseLeave={onLeave}
-      onClick={onClick}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       style={{
         position: 'absolute',
         left: x + dx,
         top: y + dy,
         width: 0,
         height: 0,
-        zIndex: isActive ? 5 : isHover ? 4 : 1,
+        zIndex: isDragging ? 6 : isActive ? 5 : isHover ? 4 : 1,
         opacity: isDimmed ? 0.34 : 1,
-        transition: 'opacity 240ms',
-        cursor: 'pointer',
+        transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)`,
+        transition: releasing
+          ? 'transform 460ms cubic-bezier(.34,1.56,.64,1), opacity 240ms'
+          : 'opacity 240ms',
+        cursor: isDragging ? 'grabbing' : 'grab',
+        touchAction: 'none',
       }}
     >
       <button
