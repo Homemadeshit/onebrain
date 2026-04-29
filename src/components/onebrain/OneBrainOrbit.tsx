@@ -256,17 +256,42 @@ interface CenterLogoProps {
   pulse: boolean
   cx: number; cy: number
   isActive: boolean
-  onClick: () => void
+  onTap: () => void
+  onHold: () => void
   dimmed: boolean
   size?: number
   showCaption?: boolean
 }
 
 function CenterLogo({
-  pulse, cx, cy, isActive, onClick, dimmed,
+  pulse, cx, cy, isActive, onTap, onHold, dimmed,
   size = 132, showCaption = true,
 }: CenterLogoProps) {
   const SIZE = size
+  const holdTimerRef = useRef<number | null>(null)
+  const heldRef = useRef(false)
+
+  const startPress = () => {
+    heldRef.current = false
+    holdTimerRef.current = window.setTimeout(() => {
+      heldRef.current = true
+      onHold()
+    }, 280)
+  }
+  const endPress = () => {
+    if (holdTimerRef.current !== null) {
+      clearTimeout(holdTimerRef.current)
+      holdTimerRef.current = null
+    }
+    if (!heldRef.current) onTap()
+  }
+  const cancelPress = () => {
+    if (holdTimerRef.current !== null) {
+      clearTimeout(holdTimerRef.current)
+      holdTimerRef.current = null
+    }
+    heldRef.current = false
+  }
   return (
     <div style={{
       position: 'absolute',
@@ -302,8 +327,13 @@ function CenterLogo({
         pointerEvents: 'none',
       }}/>
       <button
-        onClick={onClick}
-        aria-label="Open OneBrain assistant"
+        onMouseDown={startPress}
+        onMouseUp={endPress}
+        onMouseLeave={cancelPress}
+        onTouchStart={(e) => { e.preventDefault(); startPress() }}
+        onTouchEnd={(e) => { e.preventDefault(); endPress() }}
+        onTouchCancel={cancelPress}
+        aria-label="Tap to ask, hold to speak"
         style={{
           position: 'absolute', inset: 0,
           width: SIZE, height: SIZE,
@@ -317,6 +347,9 @@ function CenterLogo({
           padding: 0,
           transition: 'transform 220ms cubic-bezier(.2,.7,.2,1)',
           transform: isActive ? 'scale(0.92)' : 'scale(1)',
+          WebkitTapHighlightColor: 'transparent',
+          touchAction: 'manipulation',
+          userSelect: 'none',
         }}
       >
         <span aria-hidden style={{
@@ -336,17 +369,23 @@ function CenterLogo({
       {showCaption && (
         <div style={{
           position: 'absolute',
-          top: SIZE + 14,
+          top: SIZE + 12,
           left: '50%',
           transform: 'translateX(-50%)',
           textAlign: 'center',
           whiteSpace: 'nowrap',
           opacity: isActive ? 0 : 1,
           transition: 'opacity 200ms',
+          pointerEvents: 'none',
         }}>
-          <div className="ob-serif" style={{ fontSize: 18, lineHeight: 1, color: 'var(--ob-ink)' }}>OneBrain</div>
-          <div className="ob-mono" style={{ fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ob-ink-2)', marginTop: 4 }}>
-            Tap to ask
+          <div className="ob-mono" style={{
+            fontSize: 9.5,
+            letterSpacing: '0.18em',
+            textTransform: 'uppercase',
+            color: 'var(--ob-ink-2)',
+            lineHeight: 1.4,
+          }}>
+            Tap to ask · Hold to speak
           </div>
         </div>
       )}
@@ -359,12 +398,18 @@ interface ChatOverlayProps {
   cx: number; cy: number
   onClose: () => void
   isPhone: boolean
+  initialVoiceMode: boolean
 }
 
-function ChatOverlay({ open, cx, cy, onClose, isPhone }: ChatOverlayProps) {
-  const [voiceMode, setVoiceMode] = useState(false)
+function ChatOverlay({ open, cx, cy, onClose, isPhone, initialVoiceMode }: ChatOverlayProps) {
+  const [voiceMode, setVoiceMode] = useState(initialVoiceMode)
   const [value, setValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Each time the overlay opens, sync voice mode to the initial intent.
+  useEffect(() => {
+    if (open) setVoiceMode(initialVoiceMode)
+  }, [open, initialVoiceMode])
 
   useEffect(() => {
     if (open && !voiceMode) {
@@ -634,6 +679,7 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
   const stageRef = useRef<HTMLDivElement>(null)
   const { w, h } = useResponsiveSize(stageRef)
   const [chatOpen, setChatOpen] = useState(false)
+  const [voiceIntent, setVoiceIntent] = useState(false)
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [pillarFilter, setPillarFilter] = useState<PillarId | null>(null)
   const [rotation, setRotation] = useState(0)
@@ -678,16 +724,22 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
   const stageW = w
   const stageH = Math.max(220, h - topInset - FOOTER_H)
 
-  // Adaptive radius — clamp so the bubbles + labels fit in the available rect.
-  // labelRoom: space reserved for the label below/around the bubble.
+  // Adaptive radius (in pixels) — clamp so bubbles + labels + caption fit.
   const labelRoom = isPhone ? 36 : isTablet ? 30 : 0
-  const halfV = stageH / 2 - bubbleSize / 2 - labelRoom - 8
-  const halfH = w / 2 - bubbleSize / 2 - (isPhone ? 8 : 60)
+  const captionH = 28
+  // Caption sits below center logo at SIZE/2 + 12 + textHeight. Bottom bubble
+  // top is at R - bubbleSize/2. To avoid overlap: R >= centerLogoSize/2 + captionH + bubbleSize/2.
+  const minRadiusForCaption = centerLogoSize / 2 + captionH + bubbleSize / 2
+  const maxRadiusFromH = stageH / 2 - bubbleSize / 2 - labelRoom - 8
+  const maxRadiusFromW = w / 2 - bubbleSize / 2 - (isPhone ? 8 : 60)
   const denom = Math.max(1, Math.min(stageW, stageH))
-  const adaptiveRadius = isMobile
-    ? Math.min(baseTweaks.radius, halfV / denom, halfH / denom)
-    : baseTweaks.radius
-  const radius = Math.max(0.16, adaptiveRadius)
+  const desiredPx = baseTweaks.radius * denom
+  const radiusPx = Math.max(
+    bubbleSize, // never shrink below the bubble itself
+    Math.min(desiredPx, maxRadiusFromH, maxRadiusFromW)
+  )
+  const radius = radiusPx / denom
+  const showCaption = radiusPx >= minRadiusForCaption
 
   const positions = useMemo(
     () => getBubblePositions(TASKS.length, stageW, stageH, cx, cy, radius, rotation),
@@ -820,9 +872,10 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
           cx={cx} cy={cy}
           isActive={chatOpen}
           dimmed={false}
-          onClick={() => setChatOpen(o => !o)}
+          onTap={() => { setVoiceIntent(false); setChatOpen(o => !o) }}
+          onHold={() => { setVoiceIntent(true); setChatOpen(true) }}
           size={centerLogoSize}
-          showCaption={!isPhone}
+          showCaption={showCaption}
         />
         {TASKS.map((t, i) => {
           const p = positions[i]
@@ -850,7 +903,13 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
         })}
       </div>
 
-      <ChatOverlay open={chatOpen} cx={cx} cy={cy} onClose={() => setChatOpen(false)} isPhone={isPhone}/>
+      <ChatOverlay
+        open={chatOpen}
+        cx={cx} cy={cy}
+        onClose={() => setChatOpen(false)}
+        isPhone={isPhone}
+        initialVoiceMode={voiceIntent}
+      />
     </div>
   )
 }
