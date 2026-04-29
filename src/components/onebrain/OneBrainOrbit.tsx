@@ -86,80 +86,57 @@ interface BubbleProps {
   seed?: BubbleSeed
   time: number
   motionEnabled: boolean
+  physDx: number
+  physDy: number
   isHover: boolean
   isActive: boolean
   isDimmed: boolean
+  isDragging: boolean
   forceLabelBelow: boolean
   onHover: () => void
   onLeave: () => void
-  onClick: () => void
+  onTap: () => void
+  onDragStart: (px: number, py: number, pointerId: number, captureTarget: Element) => void
+  onDragMove: (px: number, py: number) => void
+  onDragEnd: () => void
 }
 
 function Bubble({
   task, x, y, cx, cy, size, seed, time, motionEnabled,
-  isHover, isActive, isDimmed, forceLabelBelow, onHover, onLeave, onClick,
+  physDx, physDy,
+  isHover, isActive, isDimmed, isDragging, forceLabelBelow,
+  onHover, onLeave, onTap, onDragStart, onDragMove, onDragEnd,
 }: BubbleProps) {
   const pillar = PILLARS[task.pillar]
 
-  // Drag state: pointer can grab and toss the bubble; on release it springs
-  // back to its base orbit position with a tiny overshoot.
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
-  const [releasing, setReleasing] = useState(false)
-  const [isDragging, setIsDragging] = useState(false)
-  const dragStartRef = useRef<{ px: number; py: number; sx: number; sy: number; moved: boolean } | null>(null)
-  const releaseTimerRef = useRef<number | null>(null)
-
-  useEffect(() => () => {
-    if (releaseTimerRef.current !== null) clearTimeout(releaseTimerRef.current)
-  }, [])
+  const startRef = useRef<{ px: number; py: number; moved: boolean } | null>(null)
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return
-    e.currentTarget.setPointerCapture(e.pointerId)
-    if (releaseTimerRef.current !== null) {
-      clearTimeout(releaseTimerRef.current)
-      releaseTimerRef.current = null
-    }
-    setReleasing(false)
-    dragStartRef.current = {
-      px: e.clientX, py: e.clientY,
-      sx: dragOffset.x, sy: dragOffset.y,
-      moved: false,
-    }
+    startRef.current = { px: e.clientX, py: e.clientY, moved: false }
+    onDragStart(e.clientX, e.clientY, e.pointerId, e.currentTarget)
   }
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const s = dragStartRef.current
+    const s = startRef.current
     if (!s) return
-    const nx = e.clientX - s.px + s.sx
-    const ny = e.clientY - s.py + s.sy
     if (!s.moved && Math.hypot(e.clientX - s.px, e.clientY - s.py) > 4) {
       s.moved = true
-      setIsDragging(true)
     }
-    if (s.moved) setDragOffset({ x: nx, y: ny })
+    onDragMove(e.clientX, e.clientY)
   }
   const handlePointerUp = () => {
-    const s = dragStartRef.current
+    const s = startRef.current
     if (!s) return
     const wasDrag = s.moved
-    dragStartRef.current = null
-    setIsDragging(false)
-    if (wasDrag) {
-      setReleasing(true)
-      setDragOffset({ x: 0, y: 0 })
-      releaseTimerRef.current = window.setTimeout(() => {
-        setReleasing(false)
-        releaseTimerRef.current = null
-      }, 460)
-    } else {
-      onClick()
-    }
+    startRef.current = null
+    onDragEnd()
+    if (!wasDrag) onTap()
   }
 
-  let dx = 0, dy = 0, wobbleScale = 1
+  let bobX = 0, bobY = 0, wobbleScale = 1
   if (motionEnabled && seed) {
-    dx = Math.cos(time * seed.swayFreq * Math.PI * 2 + seed.swayPhase) * seed.swayAmp
-    dy = Math.sin(time * seed.bobFreq * Math.PI * 2 + seed.bobPhase) * seed.bobAmp
+    bobX = Math.cos(time * seed.swayFreq * Math.PI * 2 + seed.swayPhase) * seed.swayAmp
+    bobY = Math.sin(time * seed.bobFreq * Math.PI * 2 + seed.bobPhase) * seed.bobAmp
     wobbleScale = 1 + Math.sin(time * seed.scaleFreq * Math.PI * 2 + seed.scalePhase) * seed.scaleAmp
   }
 
@@ -203,16 +180,13 @@ function Bubble({
       onPointerCancel={handlePointerUp}
       style={{
         position: 'absolute',
-        left: x + dx,
-        top: y + dy,
+        left: x + bobX + physDx,
+        top: y + bobY + physDy,
         width: 0,
         height: 0,
         zIndex: isDragging ? 6 : isActive ? 5 : isHover ? 4 : 1,
         opacity: isDimmed ? 0.34 : 1,
-        transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)`,
-        transition: releasing
-          ? 'transform 460ms cubic-bezier(.34,1.56,.64,1), opacity 240ms'
-          : 'opacity 240ms',
+        transition: 'opacity 240ms',
         cursor: isDragging ? 'grabbing' : 'grab',
         touchAction: 'none',
       }}
@@ -746,6 +720,13 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
   const [pillarFilter, setPillarFilter] = useState<PillarId | null>(null)
   const [rotation, setRotation] = useState(0)
   const [time, setTime] = useState(0)
+  const [draggingIdx, setDraggingIdx] = useState<number | null>(null)
+
+  // Per-bubble physics — offset from base orbit position + velocity.
+  // Lives in a ref so the rAF loop can mutate without rerendering; we tick
+  // setTime() each frame which already triggers rerender.
+  const physicsRef = useRef(TASKS.map(() => ({ dx: 0, dy: 0, vx: 0, vy: 0 })))
+  const dragSampleRef = useRef<{ idx: number; px: number; py: number; t: number } | null>(null)
 
   // Adapt sizing to viewport. Three rough tiers: phone (<560), tablet (<1024), desktop.
   const isPhone = w > 0 && w < 560
@@ -753,25 +734,6 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
   const isMobile = isPhone || isTablet
 
   const bubbleSize = isPhone ? 64 : isTablet ? 78 : baseTweaks.bubbleSize
-
-  useEffect(() => {
-    if (!baseTweaks.drift && !baseTweaks.bubbleMotion) return
-    let raf = 0
-    let last = performance.now()
-    let t = 0
-    const tick = (now: number) => {
-      const dt = (now - last) / 1000
-      last = now
-      t += dt
-      setTime(t)
-      if (baseTweaks.drift) {
-        setRotation(r => r + dt * baseTweaks.driftSpeed * 0.05)
-      }
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [baseTweaks.drift, baseTweaks.driftSpeed, baseTweaks.bubbleMotion])
 
   const seeds = useBubbleSeeds(TASKS.length)
 
@@ -807,6 +769,127 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
     () => getBubblePositions(TASKS.length, stageW, stageH, cx, cy, radius, rotation),
     [stageW, stageH, cx, cy, radius, rotation]
   )
+
+  // Refs for the rAF loop — keeps the closure fresh without re-creating the rAF.
+  const physCtxRef = useRef({
+    positions, w, h, HEADER_H, FOOTER_H, PILLAR_STRIP_H,
+    bubbleSize, draggingIdx,
+    drift: baseTweaks.drift, driftSpeed: baseTweaks.driftSpeed,
+  })
+  physCtxRef.current = {
+    positions, w, h, HEADER_H, FOOTER_H, PILLAR_STRIP_H,
+    bubbleSize, draggingIdx,
+    drift: baseTweaks.drift, driftSpeed: baseTweaks.driftSpeed,
+  }
+
+  // Single rAF: drift + per-bubble bobbing time + physics integration.
+  useEffect(() => {
+    let raf = 0
+    let last = performance.now()
+    let t = 0
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
+      t += dt
+      setTime(t)
+      const ctx = physCtxRef.current
+      if (ctx.drift) setRotation(r => r + dt * ctx.driftSpeed * 0.05)
+
+      const phys = physicsRef.current
+      const bubbleR = ctx.bubbleSize / 2
+      // 1) integrate (skip currently dragged bubble)
+      const friction = Math.pow(0.92, dt * 60)
+      for (let i = 0; i < phys.length; i++) {
+        if (i === ctx.draggingIdx) continue
+        const p = phys[i]
+        p.vx *= friction
+        p.vy *= friction
+        if (Math.abs(p.vx) < 0.05) p.vx = 0
+        if (Math.abs(p.vy) < 0.05) p.vy = 0
+        p.dx += p.vx * dt * 60
+        p.dy += p.vy * dt * 60
+      }
+      // 2) bubble-bubble collisions (positional + simple impulse)
+      const minDist = bubbleR * 2
+      for (let i = 0; i < phys.length; i++) {
+        for (let j = i + 1; j < phys.length; j++) {
+          const pi = phys[i], pj = phys[j]
+          const xi = ctx.positions[i].x + pi.dx
+          const yi = ctx.positions[i].y + pi.dy
+          const xj = ctx.positions[j].x + pj.dx
+          const yj = ctx.positions[j].y + pj.dy
+          let nx = xj - xi, ny = yj - yi
+          const d = Math.hypot(nx, ny) || 0.0001
+          if (d < minDist) {
+            nx /= d; ny /= d
+            const overlap = minDist - d
+            const iLocked = i === ctx.draggingIdx
+            const jLocked = j === ctx.draggingIdx
+            const wi = iLocked ? 0 : jLocked ? 1 : 0.5
+            const wj = jLocked ? 0 : iLocked ? 1 : 0.5
+            pi.dx -= nx * overlap * wi
+            pi.dy -= ny * overlap * wi
+            pj.dx += nx * overlap * wj
+            pj.dy += ny * overlap * wj
+            const vRel = (pj.vx - pi.vx) * nx + (pj.vy - pi.vy) * ny
+            if (vRel < 0) {
+              const e = 0.45
+              const J = -(1 + e) * vRel / 2
+              if (!iLocked) { pi.vx -= J * nx; pi.vy -= J * ny }
+              if (!jLocked) { pj.vx += J * nx; pj.vy += J * ny }
+            }
+          }
+        }
+      }
+      // 3) viewport bounds — soft bounce off the chrome and edges
+      const margin = bubbleR + 4
+      const top = ctx.HEADER_H + ctx.PILLAR_STRIP_H + margin
+      const bottom = ctx.h - ctx.FOOTER_H - margin
+      const left = margin
+      const right = ctx.w - margin
+      for (let i = 0; i < phys.length; i++) {
+        if (i === ctx.draggingIdx) continue
+        const p = phys[i]
+        const x = ctx.positions[i].x + p.dx
+        const y = ctx.positions[i].y + p.dy
+        if (x < left)   { p.dx += left - x;   p.vx = Math.abs(p.vx) * 0.45 }
+        if (x > right)  { p.dx -= x - right;  p.vx = -Math.abs(p.vx) * 0.45 }
+        if (y < top)    { p.dy += top - y;    p.vy = Math.abs(p.vy) * 0.45 }
+        if (y > bottom) { p.dy -= y - bottom; p.vy = -Math.abs(p.vy) * 0.45 }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  // Drag handlers — owned by the parent so physics can read draggingIdx.
+  const onBubbleDragStart = (idx: number, px: number, py: number, pointerId: number, target: Element) => {
+    try { (target as Element & { setPointerCapture: (id: number) => void }).setPointerCapture(pointerId) } catch {}
+    setDraggingIdx(idx)
+    physicsRef.current[idx].vx = 0
+    physicsRef.current[idx].vy = 0
+    dragSampleRef.current = { idx, px, py, t: performance.now() }
+  }
+  const onBubbleDragMove = (idx: number, px: number, py: number) => {
+    const s = dragSampleRef.current
+    if (!s || s.idx !== idx) return
+    const now = performance.now()
+    const dtMs = Math.max(1, now - s.t)
+    const dx = px - s.px
+    const dy = py - s.py
+    const p = physicsRef.current[idx]
+    p.dx += dx
+    p.dy += dy
+    // velocity in px-per-frame (60fps reference); damp small samples to avoid spikes
+    p.vx = (dx / dtMs) * 16
+    p.vy = (dy / dtMs) * 16
+    dragSampleRef.current = { idx, px, py, t: now }
+  }
+  const onBubbleDragEnd = (idx: number) => {
+    if (dragSampleRef.current?.idx === idx) dragSampleRef.current = null
+    setDraggingIdx(prev => (prev === idx ? null : prev))
+  }
 
   const headerStyle: CSSProperties = {
     position: 'absolute', top: 0, left: 0, right: 0,
@@ -941,6 +1024,7 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
         />
         {TASKS.map((t, i) => {
           const p = positions[i]
+          const phys = physicsRef.current[i]
           const dimmedByFilter = pillarFilter && t.pillar !== pillarFilter
           const dimmedByFocus = hoverId !== null && hoverId !== t.id
           return (
@@ -953,13 +1037,19 @@ export default function OneBrainOrbit({ tweaks: tweaksOverride, onOpenTask }: On
               seed={seeds[i]}
               time={time + (seeds[i]?.driftLag || 0)}
               motionEnabled={baseTweaks.bubbleMotion}
+              physDx={phys.dx}
+              physDy={phys.dy}
               isHover={hoverId === t.id}
               isActive={false}
               isDimmed={Boolean(dimmedByFilter || dimmedByFocus)}
+              isDragging={draggingIdx === i}
               forceLabelBelow={isPhone}
               onHover={() => setHoverId(t.id)}
               onLeave={() => setHoverId(null)}
-              onClick={() => onOpenTask(t)}
+              onTap={() => onOpenTask(t)}
+              onDragStart={(px, py, pid, target) => onBubbleDragStart(i, px, py, pid, target)}
+              onDragMove={(px, py) => onBubbleDragMove(i, px, py)}
+              onDragEnd={() => onBubbleDragEnd(i)}
             />
           )
         })}
