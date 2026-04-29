@@ -46,10 +46,7 @@
   --ob-gold: #b88a3a;
 
   position: fixed;
-  top: 0;
-  left: var(--sidebar-w, 64px);
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: var(--ob-bg);
   color: var(--ob-ink);
   font-family: 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
@@ -201,12 +198,8 @@
 }
 .ob-root .ob-row-score { font-size: 12px; color: var(--ob-ink-2); text-align: right; }
 
-/* ── Mobile (≤1024px): clear the wealth-quest mobile bottom nav ── */
+/* ── Mobile (≤1024px): tighten chrome ── */
 @media (max-width: 1024px) {
-  .ob-root {
-    left: 0;
-    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
-  }
   .ob-root .ob-dash-topbar { padding: 12px 16px; gap: 10px; }
   .ob-root .ob-dash-topbar-left { gap: 10px; }
   .ob-root .ob-dash-back { padding: 6px 10px; font-size: 12px; }
